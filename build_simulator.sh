@@ -4,7 +4,7 @@
 if [ ! -d build ]; then
   mkdir build
 else
-  rm build/mufcoSim
+  rm build/mufcoSim  
 fi
 
 if [ ! -d build/common ]; then
@@ -22,7 +22,7 @@ fi
 #Go into building folder
 cd build
 
-#Copy autotools files
+#Copy autotools files MUFCO
 if [[ ! -e configure.ac ]]; then
 	cp ../src/configure.ac  .
 fi
@@ -31,7 +31,7 @@ cp ../src/common/Makefile.am          common
 cp ../src/graphics_engine/Makefile.am graphics_engine
 cp ../src/simulator/Makefile.am       simulator
 
-#First installation
+#First installation MUFCO
 if [[ ! -e ltmain.sh ]]; then
   libtoolize
 fi
@@ -45,8 +45,9 @@ if [[ ! -e Makefile ]]; then
 	./configure
 fi
 
-#Common make
+#MUFCO make
 make
 
-#Copy executable in the main folder 
+#Copy MUFCO executable in the main folder 
 cp mufcoSim ..
+cd ..
