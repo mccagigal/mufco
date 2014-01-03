@@ -1,4 +1,82 @@
-mufco
-=====
+MUFCO README
+============
+:Author: Manuel Castillo Cagigal
+:email: manuel.castillo@upm.es
 
-Multifrequency coupled oscillators simulator
+MUFCO simulator is a multifrequency coupled oscillators simulator.
+It is design to analyzed different coupling effects in a group
+of oscillators with external perturbations. Oscillators 
+can operate with different nominal frequencies, spread over a 
+discrete number of frequency components.
+
+Downloading MUFCO
+-----------------
+
+The source code of mufco simulator can be downloaded
+through git:
+
+$ git clone https://github.com/mccagigal/mufco.git
+
+Compiling MUFCO
+---------------
+
+The MUFCO simulator can be compiled using the compilation 
+script in the main folder:
+
+$ ./build_simulator.sh 
+
+Running MUFCO
+~~~~~~~~~~~~~
+
+The MUFCO experiments are executed:
+
+$ ./mufcoSim -p cnf/<CONFIGURATION_FILE>
+
+The <CONFIGURATION_FILE> is an xml file which defines the experiment to be executed.
+
+Configuring MUFCO
+-----------------
+
+The configuration of the MUFCO simulator is divided in five sections:
+
+* Simulation: experiment general parameters.
+- seed: define the seed of the random number generator.
+	[0-N] int value of the seed.
+	-1    the seed is taken from the CPU clock.
+- length: experiment time in time steps.
+	  [1-N] int value.
+- sampling: sampling period of signals.
+	    [1-N] int value.
+-fft_lng : FFT windows length.
+	   [2-N] int value 2-power.
+
+* Environment: environment parameters.
+
+* Oscillators: oscillator parameters.
+
+* Visualization: visualization parameters.
+
+* Writer: writer parameters.
+
+
+
+
+
+
+
+
+
+
+
+ 
+
+
+
+
+
+
+
+
+
+
+
