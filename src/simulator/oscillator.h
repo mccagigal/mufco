@@ -84,6 +84,10 @@ class COscillator {
 	float m_fK;	
 	float m_fP;	
 	/* State Variables */
+	float m_fThr;	
+	float m_fAve;
+	bool  m_bNew;
+	
 	int   m_nComp;
 	float m_fPeriod;
 	float m_fOmega;

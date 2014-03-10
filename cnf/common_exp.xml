@@ -1,13 +1,13 @@
 <?xml version="1.0"?>
 <SwarmSim>
-	<Simulation seed="-1" length="180000" sampling="90" fft_lng="128"/>
-	<Environment type="1" amplitude="50.0" offset="0.0">
+	<Simulation seed="-1" length="180000" sampling="90" fft_lng="1024"/>
+	<Environment type="1" amplitude="0.005" offset="0.0">
 		<src_1 file="/home/manu/repo/simulator/mufco/cnf/complex_cmp.xml"/>
-		<src_2 file="/home/manu/repo/simulator/mufco/cnf/profile"/>
+		<src_2 file="/home/manu/repo/simulator/mufco/cnf/DEMR_2013"/>
 	</Environment>
-	<Oscilators number="100" distribution="-1" ff="1" offset="0.0">
+	<Oscilators number="200" distribution="-1" ff="1" offset="0.0">
 		<coupling  type="3" K="-0.02"/>
-		<switching type="1" P="4.0"/>
+		<switching type="1" P="2.0"/>
 	</Oscilators>
 	<Visualization active="1" rf_rate="100">
 		<scr type="00" title="Aggregated Consumption"     x_lng="10000" y_ini="-300" y_end="300"/>

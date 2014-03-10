@@ -81,6 +81,11 @@ void COscillator::reset( void ){
 	m_fOmega  = TWO_PI / m_fPeriod;		
 	m_fPower  = 0.0;	
 	m_bNewFFT = false;
+
+	m_fThr = 0.0;	
+	m_fAve = 0.0;
+	m_bNew = true;
+	
 	return;
 };
 
@@ -90,7 +95,7 @@ void COscillator::reset( void ){
 void COscillator::elementStep ( void ){
 	if ( m_bNewFFT ){
 		// Component Switching
-		if ( m_nPType > 0 ){				
+		if ( m_nPType == 1 ){				
 			if ( m_pcRandom->nextDouble() < m_fP * m_sFFTst.FFTrel ){			
 				TVFloat tmp_vfloat;
 				for ( int i = 1 ; i < m_vFFT->size() ; i++ ){						
@@ -105,6 +110,36 @@ void COscillator::elementStep ( void ){
 					m_fArgument = TWO_PI * float ( *m_nSimStep - 1 ) / m_fPeriod + m_fPhase ;
 				}				
 			}
+		}
+		else if ( m_nPType == 2 ){
+			if ( m_bNew ){
+				m_fThr = (*m_vFFT)[m_nComp].amp;				
+				m_fAve = (*m_vFFT)[m_nComp].amp;
+				m_bNew = false;
+			}
+			else{
+				m_fAve = 0.1 * (*m_vFFT)[m_nComp].amp + 0.9 * m_fAve;				
+			}
+
+			float prob = 1.0 / ( 1.0 + exp ( -0.2 * ( (*m_vFFT)[m_nComp].amp - m_fThr ) ) );
+			if ( m_pcRandom->nextDouble() < prob ){	// WORK	- LEARNING		
+				m_fThr -= 0.01 * m_fAve * exp( - fabs( ( (*m_vFFT)[m_nComp].amp - m_fThr )/m_fAve  ) );												
+			}
+			else{ // JUMP
+				TVFloat tmp_vfloat;
+				for ( int i = 1 ; i < m_vFFT->size() ; i++ ){						
+					tmp_vfloat.push_back( pow ( (*m_vFFT)[i].amp , 2 ) );
+				}				
+				int new_cmp = _roulette ( &tmp_vfloat ) + 1; // 0 is taken into account
+				if ( m_nComp != new_cmp ){				
+					m_nComp     = new_cmp;										
+					m_fPeriod   = float ( m_nSampling ) * (*m_vFFT)[m_nComp].period;
+					m_fOmega    = TWO_PI / m_fPeriod;							
+					m_fPhase    = m_pcRandom->nextDouble( - M_PI , M_PI );	
+					m_fArgument = TWO_PI * float ( *m_nSimStep - 1 ) / m_fPeriod + m_fPhase ;
+				}
+				m_bNew = true;				
+			}									
 		}
 		// Kuramoto Coupling
 		if ( m_nComp != 0 ){

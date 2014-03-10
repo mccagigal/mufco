@@ -251,10 +251,14 @@ void CEnvironment::_configureProfile    ( void ){
 	InputFile.ignore   ( 256, ' ' );
 	InputFile.ignore   ( 256, ' ' );
 	InputFile.ignore   ( 256, ' ' );
+	InputFile.ignore   ( 256, ' ' );
+	InputFile.ignore   ( 256, ' ' );
 	InputFile >> tmp_float;
 	m_vInputProfile.push_back( m_fAmplitude * tmp_float );
 	InputFile.ignore   ( 256, '\n' );
 	for ( int i = 1 ; i < 720 ; i++ ){
+		InputFile.ignore   ( 256, ' ' );
+		InputFile.ignore   ( 256, ' ' );
 		InputFile.ignore   ( 256, ' ' );
 		InputFile.ignore   ( 256, ' ' );
 		InputFile.ignore   ( 256, ' ' );

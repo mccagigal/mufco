@@ -388,20 +388,43 @@ void CSimulator::_calculateFFTst ( void ){
 	m_sFFTres.FFTvar /= tmp_FFT->size();
 
 	/* FROM FACTOR EQUATION */
+	float tmp_max = 0.0;
 	for ( int i = 1 ; i < tmp_FFT->size() ; i++ ){
 		if ( (*tmp_FFT)[i].amp > m_sFFTres.FFTmax )
 			m_sFFTres.FFTmax   = (*tmp_FFT)[i].amp;
+		if ( (*tmp_FFT)[i].amp > tmp_max )
+			tmp_max   = (*tmp_FFT)[i].amp;
 	}
+
+	float ave = 0.0;
+	for ( int i = 1 ; i < tmp_FFT->size() ; i++ ){
+		ave += (*tmp_FFT)[i].amp / tmp_max;
+	}			
+	ave /= tmp_FFT->size();
+
+	float var = 0.0;
+	for ( int i = 1 ; i < tmp_FFT->size() ; i++ ){
+		var += pow ( (*tmp_FFT)[i].amp / tmp_max - ave , 2 );		
+	}			
+	var /= tmp_FFT->size();
+
+
 	switch( m_nFormFunction ){
 		case 1:				
 			m_sFFTres.FFTrel = 0.0;
 			for ( int i = 1 ; i < tmp_FFT->size() ; i++ ){
-				m_sFFTres.FFTrel +=  pow ( (*tmp_FFT)[i].amp / m_sFFTres.FFTmax , 4 );
-
+				m_sFFTres.FFTrel +=  pow ( tmp_FFT->at(i).amp , 4 );
 			}
-			m_sFFTres.FFTrel /= tmp_FFT->size(); 	
+			m_sFFTres.FFTrel /= float(tmp_FFT->size()) * pow ( m_sFFTres.FFTmax , 4 ); 	
 			break;
 		case 2:
+			m_sFFTres.FFTrel = 0.0;
+			for ( int i = 1 ; i < tmp_FFT->size() ; i++ ){
+				m_sFFTres.FFTrel +=  pow ( tmp_FFT->at(i).amp , 2 );
+			}
+			m_sFFTres.FFTrel /= float(tmp_FFT->size()) * pow ( m_sFFTres.FFTmax , 2 );  			
+			break;
+		case 3:
 			m_sFFTres.FFTrel = 0.0;
 			for ( int i = 1 ; i < tmp_FFT->size() ; i++ ){
 				m_sFFTres.FFTrel +=  pow ( (*tmp_FFT)[i].amp / (*tmp_FFT)[0].amp , 4 );
@@ -409,10 +432,9 @@ void CSimulator::_calculateFFTst ( void ){
 			}
 			m_sFFTres.FFTrel /= tmp_FFT->size(); 
 			break;
-		case 3:
+		case 4:
 			m_sFFTres.FFTrel = m_sFFTres.FFTvar/m_sFFTres.FFTave;
 			break;
-
 		default:			
 			m_sFFTres.FFTrel = 0.0;
 			break;
