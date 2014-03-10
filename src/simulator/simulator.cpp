@@ -105,6 +105,13 @@ void CSimulator::restart ( void ){
 	m_sFFTres.FFTvar = 0.0;
 	m_sFFTres.FFTrel = 0.0;
 	m_sFFTres.FFTmax = 0.0;
+	m_sFFTres.HAve.clear();
+	for ( int i = 0 ; i < m_nFFTsize + 1 ; i++ )
+		m_sFFTres.HAve.push_back( 0.0 );
+	m_sFFTres.HVar.clear();
+	for ( int i = 0 ; i < m_nFFTsize + 1 ; i++ )
+		m_sFFTres.HVar.push_back( 0.0 );
+	
 	/* Random */	
 	if ( m_pcRandom )
 		delete m_pcRandom;	
@@ -408,6 +415,18 @@ void CSimulator::_calculateFFTst ( void ){
 	}			
 	var /= tmp_FFT->size();
 
+	cout << "----------------------------" << endl;
+	for ( int i = 0 ; i < tmp_FFT->size()/2 + 1 ; i++ ){
+		if ( m_sFFTres.HAve[i] == 0.0 )
+			m_sFFTres.HAve[i] = tmp_FFT->at(i).amp;
+		else   
+			m_sFFTres.HAve[i] = 0.9 * m_sFFTres.HAve[i] + 0.1 * tmp_FFT->at(i).amp;
+		if ( m_sFFTres.HVar[i] == 0.0 )
+			m_sFFTres.HVar[i] = pow ( tmp_FFT->at(i).amp - m_sFFTres.HAve[i] , 2 );
+		else   
+			m_sFFTres.HVar[i] = 0.9 * m_sFFTres.HVar[i] + 0.1 * pow ( tmp_FFT->at(i).amp - m_sFFTres.HAve[i] , 2 );
+
+	}
 
 	switch( m_nFormFunction ){
 		case 1:				

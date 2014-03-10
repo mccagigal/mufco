@@ -63,6 +63,8 @@ struct sResults {
 	float FFTvar;
 	float FFTrel;
 	float FFTmax;
+	TVFloat HAve;
+	TVFloat HVar;
 };
 #endif
 
