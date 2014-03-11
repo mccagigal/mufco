@@ -41,6 +41,8 @@ COscillator::COscillator ( string* sParamsFile , int nID ){
 		if ( elemName == "Oscilators" ){
 			attr       = elem->Attribute("distribution");
 			m_nIniDist = atoi( attr.c_str() );
+			attr       = elem->Attribute("N");
+			m_fN       = atof( attr.c_str() );
 			attr       = elem->Attribute("offset");
 			m_fOffset  = atof( attr.c_str() );
 			for( XMLElement* e = elem->FirstChildElement() ; e != NULL ; e = e->NextSiblingElement() ){
@@ -55,7 +57,7 @@ COscillator::COscillator ( string* sParamsFile , int nID ){
 					attr     = e->Attribute("type");
 					m_nPType = atoi( attr.c_str() );
 					attr     = e->Attribute("P");
-					m_fP     = atof( attr.c_str() );
+					m_fP     = atof( attr.c_str() );										
 				}
 			}							
 		}
@@ -81,14 +83,8 @@ void COscillator::reset( void ){
 	m_fOmega  = TWO_PI / m_fPeriod;		
 	m_fPower  = 0.0;	
 	m_bNewFFT = false;
-
-	m_fThr  = 0.0;	
-	m_fAve  = 0.0;
-	m_fVar  = 0.0;
-	m_fStr  = 0.0;
-	m_bNew  = true;
-	m_bWork = true;
-	
+	m_fThr    = 0.0;	
+	m_bNew    = true;	
 	return;
 };
 
@@ -99,15 +95,15 @@ void COscillator::elementStep ( void ){
 	if ( m_bNewFFT ){
 		// Component Switching
 		if ( m_nPType == 1 ){				
-			if ( m_pcRandom->nextDouble() < m_fP * m_sFFTst.FFTrel ){			
+			if ( m_pcRandom->nextDouble() < m_fP * m_sFFTst->FFTff ){			
 				TVFloat tmp_vfloat;
 				for ( int i = 1 ; i < m_vFFT->size() ; i++ ){						
-					tmp_vfloat.push_back( pow ( (*m_vFFT)[i].amp , 2 ) );
+					tmp_vfloat.push_back( pow ( m_vFFT->at(i).amp , 2 ) );
 				}				
 				int new_cmp = _roulette ( &tmp_vfloat ) + 1; // 0 is taken into account
 				if ( m_nComp != new_cmp ){				
 					m_nComp     = new_cmp;										
-					m_fPeriod   = float ( m_nSampling ) * (*m_vFFT)[m_nComp].period;
+					m_fPeriod   = float ( m_nSampling ) * m_vFFT->at(m_nComp).period;
 					m_fOmega    = TWO_PI / m_fPeriod;							
 					m_fPhase    = m_pcRandom->nextDouble( - M_PI , M_PI );	
 					m_fArgument = TWO_PI * float ( *m_nSimStep - 1 ) / m_fPeriod + m_fPhase ;
@@ -115,48 +111,46 @@ void COscillator::elementStep ( void ){
 			}
 		}
 		else if ( m_nPType == 2 ){
-			if ( m_bNew ){
-				m_fThr = (*m_vFFT)[m_nComp].amp;				
-				m_fAve = (*m_vFFT)[m_nComp].amp;
-				m_fVar = 0.0;
-				m_bNew = false;
-			}
-			else{
-				m_fAve = 0.1 * (*m_vFFT)[m_nComp].amp + 0.9 * m_fAve;
-				m_fVar = 0.1 * pow( (*m_vFFT)[m_nComp].amp - m_fAve , 2 ) + 0.9 * m_fVar;				
-			}
-
-			float caca  = (1.0 + 20.0 * sqrt( m_sFFTst.HVar[m_nComp] ));
-			float caca2 = ( 1.0 - pow ( m_fStr , 2 )   );//4.0 * m_fStr * ( 1.0 - m_fStr );
-			float inc   = caca * exp( - fabs( ( (*m_vFFT)[m_nComp].amp - m_fThr )/caca  ) );
-			float dec   = exp( - 100000 * ( m_sFFTst.HVar[m_nComp] ) );
-
-			float prob = 1.0 / ( 1.0 + exp ( -0.2 * ( (*m_vFFT)[m_nComp].amp - m_fThr ) ) );
-			if ( m_pcRandom->nextDouble() < prob ){	// WORK	- LEARNING	
-				//m_bWork = true;	
-				m_fThr += - ( 1.0 + caca2 ) * inc + dec;
-				m_fStr  = 0.9 * m_fStr;												
-			}
-			else{ // JUMP
-				m_fThr +=   ( 1.0 - 2.0 * caca2 ) * inc - dec;
-				//m_bWork = false;	
+			if ( m_pcRandom->nextDouble() < m_fP * m_sFFTst->FFTff ){			
 				TVFloat tmp_vfloat;
 				for ( int i = 1 ; i < m_vFFT->size() ; i++ ){						
-					tmp_vfloat.push_back( pow ( (*m_vFFT)[i].amp , 2 ) );
+					tmp_vfloat.push_back( pow ( m_vFFT->at(i).amp , 2 ) * exp( - m_fN * m_sFFTst->HRel[i] ) );
 				}				
 				int new_cmp = _roulette ( &tmp_vfloat ) + 1; // 0 is taken into account
 				if ( m_nComp != new_cmp ){				
 					m_nComp     = new_cmp;										
-					m_fPeriod   = float ( m_nSampling ) * (*m_vFFT)[m_nComp].period;
+					m_fPeriod   = float ( m_nSampling ) * m_vFFT->at(m_nComp).period;
 					m_fOmega    = TWO_PI / m_fPeriod;							
 					m_fPhase    = m_pcRandom->nextDouble( - M_PI , M_PI );	
 					m_fArgument = TWO_PI * float ( *m_nSimStep - 1 ) / m_fPeriod + m_fPhase ;
-					m_fAve = (*m_vFFT)[m_nComp].amp;
-					m_fVar = 0.0;
-				}			
-				m_fStr = 0.1 + 0.9 * m_fStr; 
-			}		
-			cout << "ST: " << m_fThr << " " << prob << " | " << m_fStr << " | " << m_nComp << endl;							
+				}
+			}										
+		}
+		else if ( m_nPType == 3 ){
+			if ( m_bNew ){
+				m_fThr = m_vFFT->at(m_nComp).amp;				
+				m_bNew = false;
+			}						
+			float prob  = 1.0 / ( 1.0 + exp ( -0.2 * ( m_vFFT->at(m_nComp).amp - m_fThr ) ) );
+			float alpha = (1.0 + 1.0 * sqrt( m_sFFTst->HVar[m_nComp] ));
+			float inc   = alpha * exp( - fabs( ( m_vFFT->at(m_nComp).amp - m_fThr )/ alpha ) );
+			if ( m_pcRandom->nextDouble() < prob ){	// WORK	- LEARNING
+				m_fThr += - inc * ( 1.0 - 2.0 * exp ( - m_vFFT->at(m_nComp).amp ) );
+			}
+			else{
+				TVFloat tmp_vfloat;
+				for ( int i = 1 ; i < m_vFFT->size() ; i++ ){						
+					tmp_vfloat.push_back( pow ( m_vFFT->at(i).amp , 2 ) );
+				}				
+				int new_cmp = _roulette ( &tmp_vfloat ) + 1; // 0 is taken into account
+				if ( m_nComp != new_cmp ){				
+					m_nComp     = new_cmp;										
+					m_fPeriod   = float ( m_nSampling ) * m_vFFT->at(m_nComp).period;
+					m_fOmega    = TWO_PI / m_fPeriod;							
+					m_fPhase    = m_pcRandom->nextDouble( - M_PI , M_PI );	
+					m_fArgument = TWO_PI * float ( *m_nSimStep - 1 ) / m_fPeriod + m_fPhase ;				
+				}
+			}				
 		}
 		// Kuramoto Coupling
 		if ( m_nComp != 0 ){
@@ -166,13 +160,13 @@ void COscillator::elementStep ( void ){
 					ph_mod = m_fK * m_R * sin ( m_Phi - m_fArgument );					
 					break;
 				case 2:
-					ph_mod = m_fK * ( (*m_vFFT)[m_nComp].amp / ( m_nPop + m_A ) ) * sin ( (*m_vFFT)[m_nComp].phs - m_fArgument );
+					ph_mod = m_fK * ( m_vFFT->at(m_nComp).amp / ( m_nPop + m_A )  ) * sin ( m_vFFT->at(m_nComp).phs - m_fArgument );
 					break;
 				case 3:
-					ph_mod = m_fK * ( (*m_vFFT)[m_nComp].amp / m_sFFTst.FFTmax   ) * sin ( (*m_vFFT)[m_nComp].phs - m_fArgument ); 
+					ph_mod = m_fK * ( m_vFFT->at(m_nComp).amp / m_sFFTst->FFTmax  ) * sin ( m_vFFT->at(m_nComp).phs - m_fArgument ); 
 					break;
 				case 4:
-					ph_mod = m_fK * ( (*m_vFFT)[m_nComp].amp / (*m_vFFT)[0].amp ) * sin ( (*m_vFFT)[m_nComp].phs - m_fArgument ); 
+					ph_mod = m_fK * ( m_vFFT->at(m_nComp).amp / m_vFFT->at(0).amp ) * sin ( m_vFFT->at(m_nComp).phs - m_fArgument ); 
 					break;
 				default:
 					break;	
@@ -187,13 +181,12 @@ void COscillator::elementStep ( void ){
 	}
 	/* Oscilator */
 	m_fArgument = m_fOmega * float ( *m_nSimStep ) + m_fPhase ;
-	if ( m_bWork )
-		m_fPower    = m_fOffset + cos ( m_fArgument );	
+	m_fPower    = m_fOffset + cos ( m_fArgument );	
 	return;
 };
 
 /******************************************************************************/
-void COscillator::sendFFT ( TVFreqCmp* input , sResults input2 ) { 
+void COscillator::sendFFT ( TVFreqCmp* input , SFFTst* input2 ) { 
 	m_vFFT    = input; 
 	m_bNewFFT = true; 
 	m_sFFTst  = input2;

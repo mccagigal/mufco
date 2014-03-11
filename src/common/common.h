@@ -50,21 +50,23 @@ typedef vector<float>    TVFloat;
 typedef vector<TVFloat>  TMFloat;
 typedef vector<TVFloat*> TMFloat_pt;
 
-struct sFreqCmp {	
+struct SFreqCmp {	
 	float amp;
 	float phs;	
 	float period;	
 };
-typedef vector<sFreqCmp>  TVFreqCmp;
+typedef vector<SFreqCmp>  TVFreqCmp;
 typedef vector<TVFreqCmp> TMFreqCmp;
 
-struct sResults {
-	float FFTave;
-	float FFTvar;
-	float FFTrel;
-	float FFTmax;
+struct SFFTst {
+	float   FFTave;
+	float   FFTvar;	
+	float   FFTmax;
+	float   FFTff;
 	TVFloat HAve;
 	TVFloat HVar;
+	TVFloat HRel;
+	TMFloat HAmp;
 };
 #endif
 

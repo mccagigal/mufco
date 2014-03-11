@@ -49,11 +49,12 @@ class COscillator {
 	int   getWorkPer  ( void ){return m_fPeriod;};	
 	int   getCmp      ( void ){return m_nComp;};
 
-	void  sendFFT         ( TVFreqCmp* , sResults );
+	void  sendFFT         ( TVFreqCmp* , SFFTst* );
 	void  sendMFArguments ( float R    , float P , float A ) { m_R = R; m_Phi = P; m_A = A;};
 	
 	void  setKuramoto     ( float input )           { m_fK = input; };
 	void  setSwitchPr     ( float input )           { m_fP = input; };
+	void  setAvoidNoise   ( float input )           { m_fN = input; };
 
 	void  setRandom       ( CRandom* input )        { m_pcRandom = input; };	
 	void  setClock        ( int* input )            { m_nSimStep = input; };
@@ -73,7 +74,7 @@ class COscillator {
 	float    m_fOffset;
 	/* External Information */
 	TVFreqCmp* m_vFFT;
-	sResults   m_sFFTst;
+	SFFTst*    m_sFFTst;
 	TVFloat*   m_vArgs;
 	float      m_R;
 	float      m_Phi;
@@ -83,14 +84,10 @@ class COscillator {
 	/* Kuramoto parameter */
 	float m_fK;	
 	float m_fP;	
+	float m_fN;
 	/* State Variables */
 	float m_fThr;	
-	float m_fAve;
-	float m_fVar;
-	bool  m_bNew;
-	bool  m_bWork;
-	float m_fStr;
-	
+	bool  m_bNew;	
 	int   m_nComp;
 	float m_fPeriod;
 	float m_fOmega;

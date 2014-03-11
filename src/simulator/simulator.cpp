@@ -81,7 +81,11 @@ CSimulator::CSimulator ( string pcParamsFile ){
 			attr            = elem->Attribute("number");
 			m_nPopulation   = atoi( attr.c_str() );
 			attr            = elem->Attribute("ff");
-			m_nFormFunction = atoi( attr.c_str() );				
+			m_nF            = atoi( attr.c_str() );	
+			attr            = elem->Attribute("N");
+			m_fN            = atof( attr.c_str() );	
+			attr            = elem->Attribute("hist");
+			m_nFFTst_hist   = atoi( attr.c_str() );			
 		}
 		else if ( elemName == "Environment" ){
 			m_pcEnvironment   = new CEnvironment ( elem );			
@@ -92,7 +96,7 @@ CSimulator::CSimulator ( string pcParamsFile ){
 
 	}
 	conf.Clear();	
-	restart();	
+	restart();
 	return;
 };
 
@@ -100,18 +104,25 @@ CSimulator::CSimulator ( string pcParamsFile ){
 /* RESTART 							*/
 /****************************************************************/
 void CSimulator::restart ( void ){
+	/* Variables initial values */
 	m_nSimStep       = 0;
-	m_sFFTres.FFTave = 0.0;
-	m_sFFTres.FFTvar = 0.0;
-	m_sFFTres.FFTrel = 0.0;
-	m_sFFTres.FFTmax = 0.0;
-	m_sFFTres.HAve.clear();
-	for ( int i = 0 ; i < m_nFFTsize + 1 ; i++ )
-		m_sFFTres.HAve.push_back( 0.0 );
-	m_sFFTres.HVar.clear();
-	for ( int i = 0 ; i < m_nFFTsize + 1 ; i++ )
-		m_sFFTres.HVar.push_back( 0.0 );
-	
+	m_sFFTst.FFTave = 0.0;
+	m_sFFTst.FFTvar = 0.0;	
+	m_sFFTst.FFTmax = 0.0;
+	m_sFFTst.FFTff  = 0.0;
+	m_sFFTst.HAve.clear();
+	for ( int i = 0 ; i < m_nFFTsize/2 + 1 ; i++ )
+		m_sFFTst.HAve.push_back( 0.0 );
+	m_sFFTst.HVar.clear();
+	for ( int i = 0 ; i < m_nFFTsize/2 + 1 ; i++ )
+		m_sFFTst.HVar.push_back( 0.0 );
+	m_sFFTst.HRel.clear();
+	for ( int i = 0 ; i < m_nFFTsize/2 + 1 ; i++ )
+		m_sFFTst.HRel.push_back( 0.0 );
+	m_sFFTst.HAmp.clear();
+	TVFloat tmp_vf;
+	for ( int i = 0 ; i <  m_nFFTsize/2 + 1 ; i++ )
+		m_sFFTst.HAmp.push_back(tmp_vf);
 	/* Random */	
 	if ( m_pcRandom )
 		delete m_pcRandom;	
@@ -143,6 +154,421 @@ void CSimulator::restart ( void ){
 	/* Writer */
 	if ( m_bWriter )
 		_writerInit();
+	return;
+};
+
+/****************************************************************/
+/* DESTRUCTOR 							*/
+/****************************************************************/
+CSimulator::~CSimulator ( void ){
+	for ( int i = 0 ; i < m_vpcOscillators.size() ; i++ )
+		delete m_vpcOscillators[i];	
+	delete m_pcEnvironment;
+	delete m_pcRandom;
+	if ( m_bVisu  )
+		delete m_pcPlotter;
+	return;
+};
+
+/****************************************************************/
+/* MAIN FUNCTION						*/
+/****************************************************************/
+void CSimulator::executeSimulation ( void ){	
+	bool     SimFinished = false;
+	while(!SimFinished){
+		/* ELEMENTS */			
+		for ( int i = 0 ; i < m_vpcOscillators.size() ; i++ ){
+			m_vpcOscillators[i]->elementStep( );						
+		}	
+		/* ENVIRONMENT */	
+		m_pcEnvironment->environmentStep ();		
+		/* STATE VARIABLE WHEN FFT AVAILABLE */		
+		if ( m_pcEnvironment->isFFT() ){
+			/* MF variables*/
+			_calculateMF( );
+			/* FFT statistics */	
+			_calculateFFTst ( );
+			/* Send info to oscilators */
+			TVFreqCmp* tmp_FFT = m_pcEnvironment->getGFFT();
+			float tmp_amp;
+			int   osc_cmp;
+			for ( int i = 0 ; i < m_vOscillatorDist.size() ; i++ ){
+				m_vOscillatorDist[i] = 0;
+			}
+			for ( int i = 0 ; i < m_vpcOscillators.size() ; i++ ){
+				osc_cmp = m_vpcOscillators[ i ]->getCmp();
+				m_vpcOscillators  [ i ]->sendFFT( tmp_FFT , &m_sFFTst );					
+				tmp_amp           = (*(m_pcEnvironment->getNCSignalAmp()))[ osc_cmp ]; 			
+				m_vpcOscillators  [ i ]->sendMFArguments (  m_vR[ osc_cmp ] , m_vPhi[ osc_cmp ] , tmp_amp );
+				m_vOscillatorDist [ osc_cmp ]++;
+			}
+			/* WRITE */	
+			if ( m_bWriter && m_pcEnvironment->isFFT() )		
+				_writer ( );
+		}		
+		/* VISU */			
+		if ( m_bVisu  )
+			m_pcPlotter->updateDisplay ();
+		/* FINAL CONDITION */		
+		if ( m_bVisu  ){
+			if ( m_pcPlotter->closed() )
+				SimFinished = true;
+		}
+		else{
+			if ( m_nSimStep > m_nStepLimit )
+				SimFinished = true;			
+		}					
+		m_nSimStep++;
+	}
+	return;
+};
+
+/****************************************************************/
+void CSimulator::setKuramoto ( float input ){	
+	for ( int i = 0 ; i < m_vpcOscillators.size() ; i++ )
+		m_vpcOscillators[i]->setKuramoto ( input );	
+	return;
+};
+
+/****************************************************************/
+void CSimulator::setSwitchPr ( float input ){
+	for ( int i = 0 ; i < m_vpcOscillators.size() ; i++ )
+		m_vpcOscillators[i]->setSwitchPr ( input );
+	return;
+};
+
+/****************************************************************/
+void CSimulator::setAvoidNoise ( float input ){
+	m_fN = input;
+	for ( int i = 0 ; i < m_vpcOscillators.size() ; i++ )
+		m_vpcOscillators[i]->setAvoidNoise ( input );
+	return;
+};
+
+/****************************************************************/
+void CSimulator::_calculateMF   ( void ){
+	TVFloat  tmp_real, tmp_img;
+	TVInt    tmp_pop;
+	TVFloat* EArg = m_pcEnvironment->getNCSignalArg();
+	TVFloat* EAmp = m_pcEnvironment->getNCSignalAmp();
+	for ( int i = 0 ; i < m_nFFTsize/2 ; i++ ){
+		tmp_real.push_back ( (*EAmp)[i] * cos ( (*EArg)[i] ) );
+		tmp_img.push_back  ( (*EAmp)[i] * sin ( (*EArg)[i] ) );
+		tmp_pop.push_back  ( 0 );				
+	}
+	for ( int i = 0 ; i < m_vpcOscillators.size() ; i++ ){
+		tmp_real[m_vpcOscillators[i]->getCmp()] += cos ( m_vpcOscillators[i]->getArgument() );
+		tmp_img [m_vpcOscillators[i]->getCmp()] += sin ( m_vpcOscillators[i]->getArgument() );
+		tmp_pop [m_vpcOscillators[i]->getCmp()]++;
+	}				
+	m_vR.clear();
+	m_vPhi.clear();
+	m_vTheta.clear();
+	for ( int i = 0 ; i < m_nFFTsize/2 ; i++ ){
+		if ( ( float(tmp_pop[i]) + (*EAmp)[i] ) > 1e-3 ){ 
+			tmp_real[i] /= ( float(tmp_pop[i]) + (*EAmp)[i] );
+			tmp_img [i] /= ( float(tmp_pop[i]) + (*EAmp)[i] );
+			complex<float> tmp_complex ( tmp_real[i] , tmp_img[i] );
+			m_vR.push_back     ( abs( tmp_complex ) );
+			m_vPhi.push_back   ( arg( tmp_complex ) );								
+		}
+		else{
+			tmp_real[i] = 0.0;
+			tmp_img [i] = 0.0;
+			m_vR.push_back(0.0);
+			m_vPhi.push_back(0.0);
+		}
+		float tmp_theta = 0.0;	
+		if ( i != 0 )
+			tmp_theta = m_vPhi.back() - fmod ( ( TWO_PI * float ( m_nSimStep) / ( m_nSampling * float( m_nFFTsize  )/float(i) ) ) , TWO_PI );
+		if ( tmp_theta > M_PI )
+			tmp_theta -= TWO_PI;
+		else if ( tmp_theta < -M_PI )
+			tmp_theta += TWO_PI;
+		m_vTheta.push_back ( tmp_theta );
+	}
+	return;
+};
+
+/****************************************************************/
+void CSimulator::_calculateFFTst ( void ){
+	TVFreqCmp* tmp_FFT = m_pcEnvironment->getGFFT();
+	/* THETA */	
+	m_vFFTTheta.clear();
+	for ( int i = 0 ; i < m_nFFTsize/2 ; i++ ){
+		float tmp_theta = 0.0;	
+		if ( i != 0 )
+			tmp_theta = (*tmp_FFT)[i].phs - fmod ( ( TWO_PI * float ( m_nSimStep) / ( m_nSampling * float( m_nFFTsize  )/float(i) ) ) , TWO_PI );
+		if ( tmp_theta > M_PI )
+			tmp_theta -= TWO_PI;
+		else if ( tmp_theta < -M_PI )
+			tmp_theta += TWO_PI;
+		m_vFFTTheta.push_back( tmp_theta );
+	}
+	/* AVERAGE AND VARIANCE OF THE SPECTRUM */
+	m_sFFTst.FFTave = 0.0;
+	for ( int i = 1 ; i < tmp_FFT->size() ; i++ ){
+		m_sFFTst.FFTave += (*tmp_FFT)[i].amp;
+	}			
+	m_sFFTst.FFTave /= tmp_FFT->size();
+	m_sFFTst.FFTvar = 0.0;
+	for ( int i = 1 ; i < tmp_FFT->size() ; i++ ){
+		m_sFFTst.FFTvar += pow ( (*tmp_FFT)[i].amp - m_sFFTst.FFTave , 2 );		
+	}			
+	m_sFFTst.FFTvar /= tmp_FFT->size();	
+	/* HISTORIC MAXIMUM */
+	for ( int i = 1 ; i < tmp_FFT->size() ; i++ ){
+		if ( (*tmp_FFT)[i].amp > m_sFFTst.FFTmax )
+			m_sFFTst.FFTmax   = (*tmp_FFT)[i].amp;		
+	}
+	/* AVERGA AND VARIANCE WITH MEMORY FACTOR */
+	for ( int i = 0 ; i < m_nFFTsize/2 + 1 ; i++ ){
+		if ( m_sFFTst.HAve[i] == 0.0 )
+			m_sFFTst.HAve[i] = tmp_FFT->at(i).amp;
+		else   
+			m_sFFTst.HAve[i] = 0.9 * m_sFFTst.HAve[i] + 0.1 * tmp_FFT->at(i).amp;
+		if ( m_sFFTst.HVar[i] == 0.0 )
+			m_sFFTst.HVar[i] = pow ( tmp_FFT->at(i).amp - m_sFFTst.HAve[i] , 2 );
+		else   
+			m_sFFTst.HVar[i] = 0.9 * m_sFFTst.HVar[i] + 0.1 * pow ( tmp_FFT->at(i).amp - m_sFFTst.HAve[i] , 2 );
+	}	
+	/* AVERAGE, DEVIATION AND THEIR RELATIONSHIP OF THE FREQ_CMP AMPLITUDES */
+	// Get new values
+	for ( int i = 0 ; i < m_sFFTst.HAmp.size() ; i++ ){
+		m_sFFTst.HAmp[i].push_back( tmp_FFT->at(i).amp );
+	}
+	// Clean the excess
+	if ( m_sFFTst.HAmp[0].size() > m_nFFTst_hist ){
+		for ( int i = 0 ; i < m_sFFTst.HAmp.size() ; i++ ){
+			m_sFFTst.HAmp[i].erase( m_sFFTst.HAmp[i].begin() );
+		}		
+	}
+	// Calculate average and deviation if there are enough samples
+	if ( m_sFFTst.HAmp[0].size() >= m_nFFTst_hist  ){
+		TVFloat ave, var;
+		for ( int i = 0 ; i < m_sFFTst.HAmp.size() ; i++ ){
+			ave.push_back(0.0);
+			var.push_back(0.0);
+		}
+		for ( int j = 0 ; j < m_sFFTst.HAmp.size() ; j++ ) {	
+			for ( int i = 0 ; i < m_nFFTst_hist ; i++ ){			
+				ave[j] += m_sFFTst.HAmp[j][ m_sFFTst.HAmp[0].size() - i - 1 ];
+			}
+			ave[j] /= m_nFFTst_hist;			
+		}
+		for ( int j = 0 ; j < m_sFFTst.HAmp.size() ; j++ ) {	
+			for ( int i = 0 ; i < m_nFFTst_hist ; i++ ){			
+				var[j] += fabs ( m_sFFTst.HAmp[j][ m_sFFTst.HAmp[0].size() - i - 1 ] - ave[j] );
+			}
+			var[j] /= m_nFFTst_hist;			
+		}		
+		m_sFFTst.HRel.clear();
+		for ( int i = 0 ; i < m_sFFTst.HAmp.size() ; i++ )
+			m_sFFTst.HRel.push_back( var[i]/ave[i] );
+
+	}
+	else{
+		m_sFFTst.HRel.clear();
+		for ( int i = 0 ; i < m_sFFTst.HAmp.size() ; i++ )
+			m_sFFTst.HRel.push_back( 0.0 );
+	}	
+	/* FORM FACTOR EQUATIONS */
+	switch( m_nF ){
+		case 1:				
+			m_sFFTst.FFTff = 0.0;
+			for ( int i = 1 ; i < tmp_FFT->size() ; i++ ){
+				m_sFFTst.FFTff +=  pow ( tmp_FFT->at(i).amp , 4 );
+			}
+			m_sFFTst.FFTff /= float(tmp_FFT->size()) * pow ( m_sFFTst.FFTmax , 4 ); 	
+			break;
+		case 2:
+			m_sFFTst.FFTff = 0.0;
+			for ( int i = 1 ; i < tmp_FFT->size() ; i++ ){
+				m_sFFTst.FFTff +=  pow ( tmp_FFT->at(i).amp , 4 ) * exp( - m_fN * m_sFFTst.HRel[i] );
+			}
+			m_sFFTst.FFTff /= float(tmp_FFT->size()) * pow ( m_sFFTst.FFTmax , 4 );   			
+			break;
+		case 3:
+			m_sFFTst.FFTff = 0.0;
+			for ( int i = 1 ; i < tmp_FFT->size() ; i++ ){
+				m_sFFTst.FFTff +=  pow ( (*tmp_FFT)[i].amp / (*tmp_FFT)[0].amp , 4 );
+
+			}
+			m_sFFTst.FFTff /= tmp_FFT->size(); 
+			break;
+		case 4:
+			m_sFFTst.FFTff = m_sFFTst.FFTvar/m_sFFTst.FFTave;
+			break;
+		default:			
+			m_sFFTst.FFTff = 0.0;
+			break;
+	}
+	return;
+};
+
+/****************************************************************/
+TVFloat CSimulator::getEvaluation ( void ){
+	TVFloat results;
+	TVFloat* tmp_sgn = m_pcEnvironment->getGSignal();
+	int ini_ptr = tmp_sgn->size() - 43200;
+	// Evaluate 30 days	
+	float   tmp_daily_max, tmp_daily_min;	
+	TVFloat daily_max, daily_min;
+	float   month_max = tmp_sgn->at( ini_ptr );
+	float   month_min = tmp_sgn->at( ini_ptr );
+	for ( int i = 0 ; i < 43200 ; i++ ){
+		// Monthly
+		if ( month_max < tmp_sgn->at( ini_ptr + i ) )
+			month_max = tmp_sgn->at( ini_ptr + i );
+		if ( month_min > tmp_sgn->at( ini_ptr + i ) )
+			month_min = tmp_sgn->at( ini_ptr + i );
+		// Daily 
+		if ( i % 1440 == 0 ){
+			if ( i != 0 ){
+				daily_max.push_back( tmp_daily_max );
+				daily_min.push_back( tmp_daily_min );
+			}
+			tmp_daily_max = tmp_daily_min = tmp_sgn->at( ini_ptr + i );						
+		}
+		if ( tmp_daily_max < tmp_sgn->at( ini_ptr + i ) )
+			tmp_daily_max = tmp_sgn->at( ini_ptr + i );
+		if ( tmp_daily_min > tmp_sgn->at( ini_ptr + i ) )
+			tmp_daily_min = tmp_sgn->at( ini_ptr + i );
+	}
+	float   month_rel = month_max / month_min;
+	TVFloat daily_rel;
+	for ( int i = 0 ; i < daily_max.size() ; i++ ){
+		daily_rel.push_back( daily_max[i] / daily_min[i] );
+	}
+	float  daily_rel_ave = 0.0;
+	for ( int i = 0 ; i < daily_rel.size() ; i++ ){
+		daily_rel_ave += daily_rel[i];
+	}
+	daily_rel_ave /= daily_rel.size();
+
+	// Get results
+	results.push_back( month_rel );	
+	results.push_back( daily_rel_ave );
+	return results;
+};
+
+/****************************************************************/
+void CSimulator::_writer ( void ){
+	ofstream out;
+	string   file_name;
+	/* Y */
+	file_name.assign ( m_sOutputFolder );
+	file_name.append ( "/y.table" );
+	out.open         ( file_name.c_str() , ios::app );
+	out << m_pcEnvironment->getGSampled()->back() << endl;
+	out.close();
+	/* Y FFT AMP */
+	file_name.assign ( m_sOutputFolder );
+	file_name.append ( "/fft.table" );
+	out.open         ( file_name.c_str() , ios::app );	
+	for ( int i = 0 ; i < m_pcEnvironment->getGFFTamp()->size() ; i++ ){
+		out << (*(m_pcEnvironment->getGFFTamp()))[i] << " ";		
+	}
+	out << endl;
+	out.close();
+	/* Y FFT STATISTICS */
+	file_name.assign ( m_sOutputFolder );
+	file_name.append ( "/res.table" );
+	out.open         ( file_name.c_str() , ios::app );
+	out << m_sFFTst.FFTave << " " << m_sFFTst.FFTvar << " " << m_sFFTst.FFTff << endl;
+	out.close();
+	/* NC FFT */
+	file_name.assign ( m_sOutputFolder );
+	file_name.append ( "/ncfft.table" );
+	out.open         ( file_name.c_str() , ios::app );	
+	for ( int i = 0 ; i < m_pcEnvironment->getNCFFTamp()->size() ; i++ ){
+		out << (*(m_pcEnvironment->getNCFFTamp()))[i] << " ";		
+	}
+	out << endl;
+	out.close();
+	/* DISTRIBUTION */
+	file_name.assign ( m_sOutputFolder );
+	file_name.append ( "/dis.table" );
+	out.open         ( file_name.c_str() , ios::app );
+	for ( int i = 0 ; i < m_vOscillatorDist.size() ; i++ )	
+		out << m_vOscillatorDist[i] << " ";
+	out << endl;
+	out.close();
+	/* C FFT */
+	file_name.assign ( m_sOutputFolder );
+	file_name.append ( "/cfft.table" );
+	out.open         ( file_name.c_str() , ios::app );	
+	for ( int i = 0 ; i < m_pcEnvironment->getCFFTamp()->size() ; i++ ){
+		out << (*(m_pcEnvironment->getCFFTamp()))[i] << " ";		
+	}
+	out << endl;
+	out.close();
+	/* PHASES */
+	file_name.assign ( m_sOutputFolder );
+	file_name.append ( "/ph.table" );
+	out.open         ( file_name.c_str() , ios::app );
+	out << "0 ";
+	out << m_vTheta[m_nWCmp] << " ";
+	out << m_vFFTTheta[m_nWCmp] << " ";
+	for ( int i = 0 ; i < m_vpcOscillators.size() ; i++ )
+		out << m_vpcOscillators[i]->getPhase() << " ";
+	out << endl;
+	out.close();
+	/* COHERENCE */
+	file_name.assign ( m_sOutputFolder );
+	file_name.append ( "/r.table" );
+	out.open         ( file_name.c_str() , ios::app );
+	for ( int i = 0 ; i < m_vR.size() ; i++ )
+		out << m_vR[i] << " ";
+	out << endl; 
+	out.close();		
+	return;
+};
+
+/****************************************************************/
+void CSimulator::_writerInit ( void ){
+	ofstream out;	
+	string   file_name;
+	/* Y */
+	file_name.assign ( m_sOutputFolder );
+	file_name.append ( "/y.table" );
+	out.open         ( file_name.c_str() );	
+	out.close();
+	/* Y FFT */
+	file_name.assign ( m_sOutputFolder );
+	file_name.append ( "/fft.table" );
+	out.open         ( file_name.c_str() );	
+	out.close();
+	/* Y FFT STATISTICS */
+	file_name.assign ( m_sOutputFolder );
+	file_name.append ( "/res.table" );
+	out.open         ( file_name.c_str() );	
+	out.close();
+	/* NC FFT */
+	file_name.assign ( m_sOutputFolder );
+	file_name.append ( "/ncfft.table" );
+	out.open         ( file_name.c_str() );	
+	out.close();
+	/* DISTRIBUTION */
+	file_name.assign ( m_sOutputFolder );
+	file_name.append ( "/dis.table" );
+	out.open         ( file_name.c_str() );	
+	out.close();
+	/* C FFT */
+	file_name.assign ( m_sOutputFolder );
+	file_name.append ( "/cfft.table" );
+	out.open         ( file_name.c_str() );	
+	out.close();	
+	/* PHASES */	
+	file_name.assign ( m_sOutputFolder );
+	file_name.append ( "/ph.table" );
+	out.open         ( file_name.c_str() );	
+	out.close();
+	/* COHERENCE */	
+	file_name.assign ( m_sOutputFolder );
+	file_name.append ( "/r.table" );
+	out.open         ( file_name.c_str() );	
+	out.close();	
 	return;
 };
 
@@ -240,344 +666,6 @@ void CSimulator::_configureVisu ( XMLElement* conf ){
 			cnt++;
 		}
 	}
-	return;
-};
-
-/****************************************************************/
-/* DESTRUCTOR 							*/
-/****************************************************************/
-CSimulator::~CSimulator ( void ){
-	for ( int i = 0 ; i < m_vpcOscillators.size() ; i++ )
-		delete m_vpcOscillators[i];	
-	delete m_pcEnvironment;
-	delete m_pcRandom;
-	if ( m_bVisu  )
-		delete m_pcPlotter;
-	return;
-};
-
-/****************************************************************/
-/* MAIN FUNCTION						*/
-/****************************************************************/
-void CSimulator::executeSimulation ( void ){	
-	bool     SimFinished = false;
-	while(!SimFinished){
-		/* ELEMENTS */			
-		for ( int i = 0 ; i < m_vpcOscillators.size() ; i++ ){
-			m_vpcOscillators[i]->elementStep( );						
-		}	
-		/* ENVIRONMENT */	
-		m_pcEnvironment->environmentStep ();		
-		/* STATE VARIABLE WHEN FFT AVAILABLE */		
-		if ( m_pcEnvironment->isFFT() ){
-			/* MF variables*/
-			_calculateMF( );
-			/* FFT statistics */	
-			_calculateFFTst ( );
-			/* Send info to oscilators */
-			TVFreqCmp* tmp_FFT = m_pcEnvironment->getGFFT();
-			float tmp_amp;
-			int   osc_cmp;
-			for ( int i = 0 ; i < m_vOscillatorDist.size() ; i++ ){
-				m_vOscillatorDist[i] = 0;
-			}
-			for ( int i = 0 ; i < m_vpcOscillators.size() ; i++ ){
-				osc_cmp = m_vpcOscillators[ i ]->getCmp();
-				m_vpcOscillators  [ i ]->sendFFT( tmp_FFT , m_sFFTres );					
-				tmp_amp           = (*(m_pcEnvironment->getNCSignalAmp()))[ osc_cmp ]; 			
-				m_vpcOscillators  [ i ]->sendMFArguments (  m_vR[ osc_cmp ] , m_vPhi[ osc_cmp ] , tmp_amp );
-				m_vOscillatorDist [ osc_cmp ]++;
-			}
-			/* WRITE */	
-			if ( m_bWriter && m_pcEnvironment->isFFT() )		
-				_writer ( );
-		}		
-		/* VISU */			
-		if ( m_bVisu  )
-			m_pcPlotter->updateDisplay ();
-		/* FINAL CONDITION */		
-		if ( m_bVisu  ){
-			if ( m_pcPlotter->closed() )
-				SimFinished = true;
-		}
-		else{
-			if ( m_nSimStep > m_nStepLimit )
-				SimFinished = true;			
-		}					
-		m_nSimStep++;
-	}
-	return;
-};
-
-/****************************************************************/
-void CSimulator::setKuramoto ( float input ){	
-	for ( int i = 0 ; i < m_vpcOscillators.size() ; i++ )
-		m_vpcOscillators[i]->setKuramoto ( input );	
-	return;
-};
-
-/****************************************************************/
-void CSimulator::setSwitchPr ( float input ){
-	for ( int i = 0 ; i < m_vpcOscillators.size() ; i++ )
-		m_vpcOscillators[i]->setSwitchPr ( input );
-	return;
-};
-
-/****************************************************************/
-void CSimulator::_calculateMF   ( void ){
-	TVFloat  tmp_real, tmp_img;
-	TVInt    tmp_pop;
-	TVFloat* EArg = m_pcEnvironment->getNCSignalArg();
-	TVFloat* EAmp = m_pcEnvironment->getNCSignalAmp();
-	for ( int i = 0 ; i < m_nFFTsize/2 ; i++ ){
-		tmp_real.push_back ( (*EAmp)[i] * cos ( (*EArg)[i] ) );
-		tmp_img.push_back  ( (*EAmp)[i] * sin ( (*EArg)[i] ) );
-		tmp_pop.push_back  ( 0 );				
-	}
-	for ( int i = 0 ; i < m_vpcOscillators.size() ; i++ ){
-		tmp_real[m_vpcOscillators[i]->getCmp()] += cos ( m_vpcOscillators[i]->getArgument() );
-		tmp_img [m_vpcOscillators[i]->getCmp()] += sin ( m_vpcOscillators[i]->getArgument() );
-		tmp_pop [m_vpcOscillators[i]->getCmp()]++;
-	}				
-	m_vR.clear();
-	m_vPhi.clear();
-	m_vTheta.clear();
-	for ( int i = 0 ; i < m_nFFTsize/2 ; i++ ){
-		if ( ( float(tmp_pop[i]) + (*EAmp)[i] ) > 1e-3 ){ 
-			tmp_real[i] /= ( float(tmp_pop[i]) + (*EAmp)[i] );
-			tmp_img [i] /= ( float(tmp_pop[i]) + (*EAmp)[i] );
-			complex<float> tmp_complex ( tmp_real[i] , tmp_img[i] );
-			m_vR.push_back     ( abs( tmp_complex ) );
-			m_vPhi.push_back   ( arg( tmp_complex ) );								
-		}
-		else{
-			tmp_real[i] = 0.0;
-			tmp_img [i] = 0.0;
-			m_vR.push_back(0.0);
-			m_vPhi.push_back(0.0);
-		}
-		float tmp_theta = 0.0;	
-		if ( i != 0 )
-			tmp_theta = m_vPhi.back() - fmod ( ( TWO_PI * float ( m_nSimStep) / ( m_nSampling * float( m_nFFTsize  )/float(i) ) ) , TWO_PI );
-		if ( tmp_theta > M_PI )
-			tmp_theta -= TWO_PI;
-		else if ( tmp_theta < -M_PI )
-			tmp_theta += TWO_PI;
-		m_vTheta.push_back ( tmp_theta );
-	}
-	return;
-};
-
-/****************************************************************/
-void CSimulator::_calculateFFTst ( void ){
-	TVFreqCmp* tmp_FFT = m_pcEnvironment->getGFFT();
-	m_vFFTTheta.clear();
-	for ( int i = 0 ; i < m_nFFTsize/2 ; i++ ){
-		float tmp_theta = 0.0;	
-		if ( i != 0 )
-			tmp_theta = (*tmp_FFT)[i].phs - fmod ( ( TWO_PI * float ( m_nSimStep) / ( m_nSampling * float( m_nFFTsize  )/float(i) ) ) , TWO_PI );
-		if ( tmp_theta > M_PI )
-			tmp_theta -= TWO_PI;
-		else if ( tmp_theta < -M_PI )
-			tmp_theta += TWO_PI;
-		m_vFFTTheta.push_back( tmp_theta );
-	}
-	m_sFFTres.FFTave = 0.0;
-	for ( int i = 1 ; i < tmp_FFT->size() ; i++ ){
-		m_sFFTres.FFTave += (*tmp_FFT)[i].amp;
-	}			
-	m_sFFTres.FFTave /= tmp_FFT->size();
-
-	m_sFFTres.FFTvar = 0.0;
-	for ( int i = 1 ; i < tmp_FFT->size() ; i++ ){
-		m_sFFTres.FFTvar += pow ( (*tmp_FFT)[i].amp - m_sFFTres.FFTave , 2 );		
-	}			
-	m_sFFTres.FFTvar /= tmp_FFT->size();
-
-	/* FROM FACTOR EQUATION */
-	float tmp_max = 0.0;
-	for ( int i = 1 ; i < tmp_FFT->size() ; i++ ){
-		if ( (*tmp_FFT)[i].amp > m_sFFTres.FFTmax )
-			m_sFFTres.FFTmax   = (*tmp_FFT)[i].amp;
-		if ( (*tmp_FFT)[i].amp > tmp_max )
-			tmp_max   = (*tmp_FFT)[i].amp;
-	}
-
-	float ave = 0.0;
-	for ( int i = 1 ; i < tmp_FFT->size() ; i++ ){
-		ave += (*tmp_FFT)[i].amp / tmp_max;
-	}			
-	ave /= tmp_FFT->size();
-
-	float var = 0.0;
-	for ( int i = 1 ; i < tmp_FFT->size() ; i++ ){
-		var += pow ( (*tmp_FFT)[i].amp / tmp_max - ave , 2 );		
-	}			
-	var /= tmp_FFT->size();
-
-	cout << "----------------------------" << endl;
-	for ( int i = 0 ; i < tmp_FFT->size()/2 + 1 ; i++ ){
-		if ( m_sFFTres.HAve[i] == 0.0 )
-			m_sFFTres.HAve[i] = tmp_FFT->at(i).amp;
-		else   
-			m_sFFTres.HAve[i] = 0.9 * m_sFFTres.HAve[i] + 0.1 * tmp_FFT->at(i).amp;
-		if ( m_sFFTres.HVar[i] == 0.0 )
-			m_sFFTres.HVar[i] = pow ( tmp_FFT->at(i).amp - m_sFFTres.HAve[i] , 2 );
-		else   
-			m_sFFTres.HVar[i] = 0.9 * m_sFFTres.HVar[i] + 0.1 * pow ( tmp_FFT->at(i).amp - m_sFFTres.HAve[i] , 2 );
-
-	}
-
-	switch( m_nFormFunction ){
-		case 1:				
-			m_sFFTres.FFTrel = 0.0;
-			for ( int i = 1 ; i < tmp_FFT->size() ; i++ ){
-				m_sFFTres.FFTrel +=  pow ( tmp_FFT->at(i).amp , 4 );
-			}
-			m_sFFTres.FFTrel /= float(tmp_FFT->size()) * pow ( m_sFFTres.FFTmax , 4 ); 	
-			break;
-		case 2:
-			m_sFFTres.FFTrel = 0.0;
-			for ( int i = 1 ; i < tmp_FFT->size() ; i++ ){
-				m_sFFTres.FFTrel +=  pow ( tmp_FFT->at(i).amp , 2 );
-			}
-			m_sFFTres.FFTrel /= float(tmp_FFT->size()) * pow ( m_sFFTres.FFTmax , 2 );  			
-			break;
-		case 3:
-			m_sFFTres.FFTrel = 0.0;
-			for ( int i = 1 ; i < tmp_FFT->size() ; i++ ){
-				m_sFFTres.FFTrel +=  pow ( (*tmp_FFT)[i].amp / (*tmp_FFT)[0].amp , 4 );
-
-			}
-			m_sFFTres.FFTrel /= tmp_FFT->size(); 
-			break;
-		case 4:
-			m_sFFTres.FFTrel = m_sFFTres.FFTvar/m_sFFTres.FFTave;
-			break;
-		default:			
-			m_sFFTres.FFTrel = 0.0;
-			break;
-	}
-	return;
-};
-
-/****************************************************************/
-void CSimulator::_writer ( void ){
-	ofstream out;
-	string   file_name;
-	/* Y */
-	file_name.assign ( m_sOutputFolder );
-	file_name.append ( "/y.table" );
-	out.open         ( file_name.c_str() , ios::app );
-	out << m_pcEnvironment->getGSampled()->back() << endl;
-	out.close();
-	/* Y FFT AMP */
-	file_name.assign ( m_sOutputFolder );
-	file_name.append ( "/fft.table" );
-	out.open         ( file_name.c_str() , ios::app );	
-	for ( int i = 0 ; i < m_pcEnvironment->getGFFTamp()->size() ; i++ ){
-		out << (*(m_pcEnvironment->getGFFTamp()))[i] << " ";		
-	}
-	out << endl;
-	out.close();
-	/* Y FFT STATISTICS */
-	file_name.assign ( m_sOutputFolder );
-	file_name.append ( "/res.table" );
-	out.open         ( file_name.c_str() , ios::app );
-	out << m_sFFTres.FFTave << " " << m_sFFTres.FFTvar << " " << m_sFFTres.FFTrel << endl;
-	out.close();
-	/* NC FFT */
-	file_name.assign ( m_sOutputFolder );
-	file_name.append ( "/ncfft.table" );
-	out.open         ( file_name.c_str() , ios::app );	
-	for ( int i = 0 ; i < m_pcEnvironment->getNCFFTamp()->size() ; i++ ){
-		out << (*(m_pcEnvironment->getNCFFTamp()))[i] << " ";		
-	}
-	out << endl;
-	out.close();
-	/* DISTRIBUTION */
-	file_name.assign ( m_sOutputFolder );
-	file_name.append ( "/dis.table" );
-	out.open         ( file_name.c_str() , ios::app );
-	for ( int i = 0 ; i < m_vOscillatorDist.size() ; i++ )	
-		out << m_vOscillatorDist[i] << " ";
-	out << endl;
-	out.close();
-	/* C FFT */
-	file_name.assign ( m_sOutputFolder );
-	file_name.append ( "/cfft.table" );
-	out.open         ( file_name.c_str() , ios::app );	
-	for ( int i = 0 ; i < m_pcEnvironment->getCFFTamp()->size() ; i++ ){
-		out << (*(m_pcEnvironment->getCFFTamp()))[i] << " ";		
-	}
-	out << endl;
-	out.close();
-	/* PHASES */
-	file_name.assign ( m_sOutputFolder );
-	file_name.append ( "/ph.table" );
-	out.open         ( file_name.c_str() , ios::app );
-	out << "0 ";
-	out << m_vTheta[m_nWCmp] << " ";
-	out << m_vFFTTheta[m_nWCmp] << " ";
-	for ( int i = 0 ; i < m_vpcOscillators.size() ; i++ )
-		out << m_vpcOscillators[i]->getPhase() << " ";
-	out << endl;
-	out.close();
-	/* COHERENCE */
-	file_name.assign ( m_sOutputFolder );
-	file_name.append ( "/r.table" );
-	out.open         ( file_name.c_str() , ios::app );
-	for ( int i = 0 ; i < m_vR.size() ; i++ )
-		out << m_vR[i] << " ";
-	out << endl; 
-	out.close();		
-	return;
-};
-
-/****************************************************************/
-void CSimulator::_writerInit ( void ){
-	ofstream out;	
-	string   file_name;
-	/* Y */
-	file_name.assign ( m_sOutputFolder );
-	file_name.append ( "/y.table" );
-	out.open         ( file_name.c_str() );	
-	out.close();
-	/* Y FFT */
-	file_name.assign ( m_sOutputFolder );
-	file_name.append ( "/fft.table" );
-	out.open         ( file_name.c_str() );	
-	out.close();
-	/* Y FFT STATISTICS */
-	file_name.assign ( m_sOutputFolder );
-	file_name.append ( "/res.table" );
-	out.open         ( file_name.c_str() );	
-	out.close();
-	/* NC FFT */
-	file_name.assign ( m_sOutputFolder );
-	file_name.append ( "/ncfft.table" );
-	out.open         ( file_name.c_str() );	
-	out.close();
-	/* DISTRIBUTION */
-	file_name.assign ( m_sOutputFolder );
-	file_name.append ( "/dis.table" );
-	out.open         ( file_name.c_str() );	
-	out.close();
-	/* C FFT */
-	file_name.assign ( m_sOutputFolder );
-	file_name.append ( "/cfft.table" );
-	out.open         ( file_name.c_str() );	
-	out.close();	
-	/* PHASES */	
-	file_name.assign ( m_sOutputFolder );
-	file_name.append ( "/ph.table" );
-	out.open         ( file_name.c_str() );	
-	out.close();
-	/* COHERENCE */	
-	file_name.assign ( m_sOutputFolder );
-	file_name.append ( "/r.table" );
-	out.open         ( file_name.c_str() );	
-	out.close();	
 	return;
 };
 

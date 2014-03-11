@@ -54,7 +54,15 @@ int main(int argc, char** argv) {
 	/* EXECUTION */	
 	CSimulator *pcSimulator = new CSimulator ( pcExperimentFilename );
 	pcSimulator->executeSimulation ( );
+	TVFloat results = pcSimulator->getEvaluation ( );
+	cout << " RESULTS: ";
+	for ( int i = 0 ; i < results.size() ; i++ ){
+		cout << results[i] << " ";
+	}	
+	cout << endl;
 	delete pcSimulator;
 	return 0;		
 };
+
+
 

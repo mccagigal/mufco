@@ -45,13 +45,16 @@ class CSimulator {
 	
 	void     setKuramoto       ( float );
 	void     setSwitchPr       ( float );
+	void     setAvoidNoise     ( float );
 	void     setSeed           ( int seed    ) {m_nSeed = seed;};
 	void     setPopulation     ( int input   ) {m_nPopulation = input;};
 	void     setAmplitude      ( float input ) {m_pcEnvironment->setAmplitude( input );};
 	
-	sResults getFFTResults ( void    ) { return m_sFFTres; };
-	float    getFFTamp     ( int cmp ) { return (*(m_pcEnvironment->getGFFTamp()))[cmp]; };
-	float    getR          ( int cmp ) { return m_vR[cmp]; };
+	SFFTst   getFFTst          ( void    ) { return m_sFFTst;};
+	float    getFFTamp         ( int cmp ) { return (*(m_pcEnvironment->getGFFTamp()))[cmp]; };
+	float    getR              ( int cmp ) { return m_vR[cmp]; };
+
+	TVFloat  getEvaluation     ( void );
 
 	
 	private:
@@ -62,6 +65,7 @@ class CSimulator {
 	int           m_nSeed;
 	int   	      m_nSimStep;
 	int           m_nFFTsize;
+	int           m_nFFTst_hist;
 	int           m_nSampling;
 	int           m_nStepLimit;	
 	int           m_nPopulation;
@@ -69,8 +73,9 @@ class CSimulator {
 	/* Status */
 	TVFloat  m_vOscillatorDist;
 	TVFloat  m_vFFTTheta;
-	sResults m_sFFTres;
-	int      m_nFormFunction;	
+	SFFTst   m_sFFTst;
+	int      m_nF;
+	float    m_fN;	
 	TVFloat  m_vPhi;
 	TVFloat  m_vR;
 	TVFloat  m_vTheta;

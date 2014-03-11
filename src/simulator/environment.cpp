@@ -150,7 +150,7 @@ void CEnvironment::environmentStep ( void ){
 void CEnvironment::_signalFFT ( TVFloat* input , TVFreqCmp* fft_out , TVFloat* fft_amp_out ){	
 	fft_out->clear();
 	fft_amp_out->clear();
-	sFreqCmp    tmp_freqcmp;
+	SFreqCmp    tmp_freqcmp;
 	/* There are enough samples */
 	if ( input->size() >= m_nFFTsize ){				
 		double time_domain  [m_nFFTsize][2];
@@ -227,7 +227,7 @@ void CEnvironment::_defineNCfromFFT ( void ){
 /****************************************************************/
 void CEnvironment::_initializeNC ( void ){
 	/* Initialize components */	
-	sFreqCmp tmp_FC;	
+	SFreqCmp tmp_FC;	
 	for ( int i = 0 ; i < m_nFFTsize ; i++ ){
 		tmp_FC.amp    = 0.0;
 		tmp_FC.phs    = 0.0;
@@ -247,16 +247,16 @@ void CEnvironment::_configureProfile    ( void ){
 	/* Read profile from file */
 	ifstream InputFile    ( m_sSourceFile.c_str() );
 	m_vInputProfile.clear ( );
-	float tmp_float, slope;
+	float tmp_float, tmp_float_old, slope;
 	InputFile.ignore   ( 256, ' ' );
 	InputFile.ignore   ( 256, ' ' );
 	InputFile.ignore   ( 256, ' ' );
 	InputFile.ignore   ( 256, ' ' );
 	InputFile.ignore   ( 256, ' ' );
-	InputFile >> tmp_float;
-	m_vInputProfile.push_back( m_fAmplitude * tmp_float );
+	InputFile >> tmp_float_old;
+	tmp_float_old *= m_fAmplitude;	
 	InputFile.ignore   ( 256, '\n' );
-	for ( int i = 1 ; i < 720 ; i++ ){
+	while ( !InputFile.eof() ){
 		InputFile.ignore   ( 256, ' ' );
 		InputFile.ignore   ( 256, ' ' );
 		InputFile.ignore   ( 256, ' ' );
@@ -264,16 +264,16 @@ void CEnvironment::_configureProfile    ( void ){
 		InputFile.ignore   ( 256, ' ' );
 		InputFile >> tmp_float;
 		tmp_float *= m_fAmplitude;
-		slope = (tmp_float - m_vInputProfile.back())/60.0;
+		slope = (tmp_float - tmp_float_old)/60.0;
 		for ( int j = 0 ; j  < 60 ; j++ ){
-			m_vInputProfile.push_back( m_vInputProfile.back() + slope );
+			m_vInputProfile.push_back( tmp_float_old + slope * j );
 		}
 		InputFile.ignore   ( 256, '\n' );
+		tmp_float_old = tmp_float;
 	}
 	InputFile.close();
 	return;
 };
-
 
 /****************************************************************/
 void CEnvironment::_configureSinusoidal ( void ){ 	
@@ -282,7 +282,7 @@ void CEnvironment::_configureSinusoidal ( void ){
     	conf.LoadFile( m_sSourceFile.c_str() );
 	XMLElement* root = conf.FirstChildElement();
 	string   elemName, attr;
-	sFreqCmp tmp_FC;
+	SFreqCmp tmp_FC;
 	for( XMLElement* elem = root->FirstChildElement() ; elem != NULL ; elem = elem->NextSiblingElement() ){
 		elemName = elem->Value();
 		if ( elemName == "Cmp" ){

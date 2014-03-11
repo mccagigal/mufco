@@ -155,12 +155,15 @@ void MPI_slaveLoop  ( void ){
 			/* Restart Simulator */	
 			pcSimulator->restart       (  );			
 			/* Set Controllers */		
-			pcSimulator->setKuramoto   ( g_vParams[0].step * float(nParams[0]) + g_vParams[0].offset );
+			pcSimulator->setKuramoto           ( g_vParams[0].step * float(nParams[0]) + g_vParams[0].offset );
 			if ( g_nParamN > 1 )
-				pcSimulator->setSwitchPr ( g_vParams[1].step * float(nParams[1]) + g_vParams[1].offset );			
+				pcSimulator->setSwitchPr   ( g_vParams[1].step * float(nParams[1]) + g_vParams[1].offset );
+			if ( g_nParamN > 2 )
+				pcSimulator->setAvoidNoise ( g_vParams[2].step * float(nParams[2]) + g_vParams[2].offset );			
 			/* Execute the experiment */
 			pcSimulator->executeSimulation ( );
 			/* Get the results */
+			TVFloat results;
 			switch(g_nResltT){
 			case 0:
 				fResults[0] = pcSimulator->getR      ( 4 );
@@ -174,11 +177,16 @@ void MPI_slaveLoop  ( void ){
 				fResults[0] = pcSimulator->getR      ( 8 );
 				fResults[1] = pcSimulator->getFFTamp ( 8 );
 				break;
-			case 3:
-				sResults tmp_res;
-				tmp_res = pcSimulator->getFFTResults ();
-				fResults[0] = tmp_res.FFTave / ( pow ( pow ( 10 , ( g_vEnvirs[0].step * float(nEnviro[0]) + g_vEnvirs[0].offset ) ) , 1 ) );
-				fResults[1] = tmp_res.FFTvar / ( pow ( pow ( 10 , ( g_vEnvirs[0].step * float(nEnviro[0]) + g_vEnvirs[0].offset ) ) , 2 ) );
+			//case 3:
+				//sResults tmp_res;
+				//tmp_res = pcSimulator->getFFTResults ();
+				//fResults[0] = tmp_res.FFTave / ( pow ( pow ( 10 , ( g_vEnvirs[0].step * float(nEnviro[0]) + g_vEnvirs[0].offset ) ) , 1 ) );
+				//fResults[1] = tmp_res.FFTvar / ( pow ( pow ( 10 , ( g_vEnvirs[0].step * float(nEnviro[0]) + g_vEnvirs[0].offset ) ) , 2 ) );
+			//	break;
+			case 4:				
+				results = pcSimulator->getEvaluation ( );
+				for ( int i = 0 ; i < g_nResltN ; i++ )
+					fResults[i] = results[i];
 				break;
 			default:
 				for ( int i = 0 ; i < g_nResltN ; i++ )
